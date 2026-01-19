@@ -22,6 +22,14 @@ pub struct Profile {
     /// 是否启用内容检查（使用哈希值比较文件，更准确但更慢）
     pub check_content: bool,
 
+    /// 是否启用 VSS 快照（仅 Windows）
+    #[serde(default)]
+    pub vss: bool,
+
+    /// 工作线程数量
+    #[serde(default = "default_workers")]
+    pub workers: usize,
+
     /// 排除模式列表（Glob 风格）
     pub exclude: Vec<String>,
 }
@@ -82,4 +90,8 @@ impl AppConfig {
             ProjectDirs::from("", "", "recall").context("Could not determine config directory")?;
         Ok(proj_dirs.config_dir().join("config.toml"))
     }
+}
+
+fn default_workers() -> usize {
+    4
 }

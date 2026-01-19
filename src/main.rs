@@ -131,6 +131,8 @@ fn run_backup(args: Args) -> Result<()> {
             source_abs,
             final_destination_root.clone(),
             args.check_content,
+            args.vss,
+            args.workers,
             args.exclude,
             args.dry_run,
         )?;
@@ -139,6 +141,16 @@ fn run_backup(args: Args) -> Result<()> {
         // 进入交互模式
         run_interactive_mode(args.dry_run)?
     };
+
+    let use_vss = args.vss || config.vss;
+
+    #[cfg(windows)]
+    if use_vss {
+        if !recall::vss::ShadowCopy::is_running_as_admin()? {
+            eprintln!("VSS requires Administrator privileges. Please run in an elevated terminal.");
+            return Err(anyhow::anyhow!("Administrator privileges required for VSS"));
+        }
+    }
 
     // 记录开始时间
     let start_time = std::time::Instant::now();
@@ -184,7 +196,7 @@ fn run_backup(args: Args) -> Result<()> {
 
     // === VSS 设置 ===
     #[cfg(windows)]
-    let _vss_guard = if args.vss && !config.dry_run {
+    let _vss_guard = if use_vss && !config.dry_run {
         println!("{}", style("Initializing VSS Snapshot...").blue());
         let sc = recall::vss::ShadowCopy::new(&config.source).context("Failed to create VSS snapshot")?;
         println!("Snapshot created at: {:?}", sc.get_snapshot_path()?);
@@ -194,7 +206,7 @@ fn run_backup(args: Args) -> Result<()> {
     };
 
     #[cfg(not(windows))]
-    if args.vss {
+    if use_vss {
         println!("{}", style("Warning: VSS is only supported on Windows. Ignoring --vss").yellow());
     }
 
@@ -247,7 +259,7 @@ fn run_backup(args: Args) -> Result<()> {
 
     // 在主线程执行备份任务
     let executor = BackupExecutor::new(config.dry_run);
-    let stats = executor.execute(rx, args.workers)?;
+    let stats = executor.execute(rx, config.workers)?;
 
     // 等待扫描完成
     if let Err(e) = scanner_handle.join().unwrap() {

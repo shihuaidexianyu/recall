@@ -52,8 +52,17 @@ pub fn run_interactive_mode(dry_run: bool) -> Result<(BackupConfig, String)> {
                 if let Some(profile) = app_config.profiles.get(name) {
                     let src = profile.source.to_string_lossy();
                     let dst = profile.destination.to_string_lossy();
-                    let check = if profile.check_content { "✓" } else { "✗" };
-                    format!("{} ({} → {}) [{}]", name, src, dst, check)
+                    let check = if profile.check_content { "C" } else { "-" };
+                    let vss = if profile.vss { "V" } else { "-" };
+                    format!(
+                        "{} ({} → {}) [{}{} W{}]",
+                        name,
+                        src,
+                        dst,
+                        check,
+                        vss,
+                        profile.workers
+                    )
                 } else {
                     name.clone()
                 }
@@ -140,12 +149,40 @@ fn create_new_profile(config: &mut AppConfig) -> Result<()> {
         .default(false)
         .interact()?;
 
+    let vss = if cfg!(windows) {
+        Confirm::with_theme(&theme)
+            .with_prompt("Enable VSS snapshot (Windows only)?")
+            .default(false)
+            .interact()?
+    } else {
+        false
+    };
+
+    let exclude_input: String = Input::with_theme(&theme)
+        .with_prompt("Exclude patterns (comma-separated, optional)")
+        .default(String::new())
+        .interact_text()?;
+
+    let exclude: Vec<String> = exclude_input
+        .split(',')
+        .map(|s| s.trim())
+        .filter(|s| !s.is_empty())
+        .map(|s| s.to_string())
+        .collect();
+
+    let workers: usize = Input::with_theme(&theme)
+        .with_prompt("Worker threads")
+        .default(4)
+        .interact_text()?;
+
     // 创建新的配置文件
     let profile = Profile {
         source: PathBuf::from(source),
         destination: PathBuf::from(dest),
         check_content,
-        exclude: vec![],
+        vss,
+        workers,
+        exclude,
     };
 
     // 保存到配置文件

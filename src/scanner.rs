@@ -194,6 +194,16 @@ pub fn decide_action(task: &FileTask, config: &BackupConfig) -> SyncAction {
 
     // 如果旧备份中不存在该文件
     if !old_path.exists() {
+        if task.src_path.is_dir() {
+            return SyncAction::CreateDir;
+        }
+        if let Ok(meta) = fs::symlink_metadata(&task.src_path) {
+            if meta.is_symlink() {
+                if let Ok(target) = fs::read_link(&task.src_path) {
+                    return SyncAction::MakeSymlink(target);
+                }
+            }
+        }
         return SyncAction::CopyNew;
     }
 

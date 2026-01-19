@@ -22,6 +22,12 @@ pub struct BackupConfig {
     /// 是否启用内容检查（使用哈希值比较文件，更准确但更慢）
     pub check_content: bool,
 
+    /// 是否启用 VSS 快照（仅 Windows）
+    pub vss: bool,
+
+    /// 工作线程数量
+    pub workers: usize,
+
     /// 排除模式列表（Glob 风格）
     pub exclude_patterns: Vec<String>,
 
@@ -46,6 +52,8 @@ impl BackupConfig {
         source: PathBuf,
         destination: PathBuf,
         check_content: bool,
+        vss: bool,
+        workers: usize,
         exclude_patterns: Vec<String>,
         dry_run: bool,
     ) -> Result<Self> {
@@ -53,6 +61,8 @@ impl BackupConfig {
             source,
             destination,
             check_content,
+            vss,
+            workers,
             exclude_patterns,
             dry_run,
         };
@@ -83,6 +93,8 @@ impl BackupConfig {
             source: profile.source.clone(),
             destination: final_dest,
             check_content: profile.check_content,
+            vss: profile.vss,
+            workers: profile.workers,
             exclude_patterns: profile.exclude.clone(),
             dry_run,
         };

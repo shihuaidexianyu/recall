@@ -9,12 +9,15 @@ use std::ptr::{null_mut, NonNull};
 use winapi::shared::winerror::{FAILED, RPC_E_CHANGED_MODE};
 use winapi::um::combaseapi::{CoInitializeEx, CoUninitialize};
 use winapi::um::fileapi::GetVolumePathNameW;
+use winapi::um::handleapi::CloseHandle;
 use winapi::um::objbase::COINIT_MULTITHREADED;
+use winapi::um::processthreadsapi::{GetCurrentProcess, OpenProcessToken};
+use winapi::um::securitybaseapi::GetTokenInformation;
 use winapi::um::vsbackup::{CreateVssBackupComponents, IVssBackupComponents, VssFreeSnapshotProperties};
 use winapi::um::vss::{
     IVssAsync, VSS_BT_COPY, VSS_CTX_BACKUP, VSS_ID, VSS_OBJECT_SNAPSHOT, VSS_SNAPSHOT_PROP,
 };
-use winapi::um::winnt::HRESULT;
+use winapi::um::winnt::{TokenElevation, HRESULT, TOKEN_ELEVATION, TOKEN_QUERY};
 
 /// 卷影副本（Shadow Copy）包装器
 ///
@@ -148,6 +151,33 @@ impl ShadowCopy {
     /// * `Ok(PathBuf)` - 快照的访问路径
     pub fn get_snapshot_path(&self) -> Result<PathBuf> {
         Ok(self.device_path.clone())
+    }
+
+    /// 判断当前进程是否以管理员权限运行
+    pub fn is_running_as_admin() -> Result<bool> {
+        unsafe {
+            let mut token = null_mut();
+            if OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &mut token) == 0 {
+                bail!("Failed to open process token for admin check");
+            }
+
+            let mut elevation: TOKEN_ELEVATION = std::mem::zeroed();
+            let mut returned = 0u32;
+            let ok = GetTokenInformation(
+                token,
+                TokenElevation,
+                &mut elevation as *mut _ as *mut _,
+                std::mem::size_of::<TOKEN_ELEVATION>() as u32,
+                &mut returned,
+            );
+            CloseHandle(token);
+
+            if ok == 0 {
+                bail!("Failed to query token elevation status");
+            }
+
+            Ok(elevation.TokenIsElevated != 0)
+        }
     }
 }
 
