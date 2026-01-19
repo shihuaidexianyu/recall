@@ -38,20 +38,29 @@ impl BackupConfig {
     /// * `check_content` - 是否启用内容检查
     /// * `exclude_patterns` - 排除模式列表
     /// * `dry_run` - 是否为试运行模式
+    ///
+    /// # 返回
+    /// * `Ok(BackupConfig)` - 创建的备份配置
+    /// * `Err(anyhow::Error)` - 处理 `.recallignore` 失败
     pub fn new(
         source: PathBuf,
         destination: PathBuf,
         check_content: bool,
         exclude_patterns: Vec<String>,
         dry_run: bool,
-    ) -> Self {
-        Self {
+    ) -> Result<Self> {
+        let mut config = Self {
             source,
             destination,
             check_content,
             exclude_patterns,
             dry_run,
-        }
+        };
+
+        // 处理 .recallignore 文件，保持与 from_profile 一致
+        config.process_recallignore()?;
+
+        Ok(config)
     }
 
     /// 从配置文件（Profile）创建备份配置

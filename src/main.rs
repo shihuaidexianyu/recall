@@ -133,7 +133,7 @@ fn run_backup(args: Args) -> Result<()> {
             args.check_content,
             args.exclude,
             args.dry_run,
-        );
+        )?;
         (config, project_name)
     } else {
         // 进入交互模式

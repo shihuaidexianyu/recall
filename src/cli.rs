@@ -28,13 +28,38 @@ pub fn run_interactive_mode(dry_run: bool) -> Result<(BackupConfig, String)> {
     let mut app_config = AppConfig::load()?;
     let theme = ColorfulTheme::default();
 
+    // 显示欢迎信息
+    println!(
+        "{}",
+        style(format!("Recall Backup Tool v{}", env!("CARGO_PKG_VERSION")))
+            .cyan()
+            .bold()
+    );
+    println!(
+        "{}",
+        style("----------------------------------------").dim()
+    );
+
     loop {
         // 获取所有配置文件名称并排序
         let mut profiles: Vec<String> = app_config.profiles.keys().cloned().collect();
         profiles.sort();
 
-        // 构建菜单选项
-        let mut choices = profiles.clone();
+        // 构建菜单选项，显示 profile 详情
+        let mut choices: Vec<String> = profiles
+            .iter()
+            .map(|name| {
+                if let Some(profile) = app_config.profiles.get(name) {
+                    let src = profile.source.to_string_lossy();
+                    let dst = profile.destination.to_string_lossy();
+                    let check = if profile.check_content { "✓" } else { "✗" };
+                    format!("{} ({} → {}) [{}]", name, src, dst, check)
+                } else {
+                    name.clone()
+                }
+            })
+            .collect();
+
         choices.push(">> Create New Profile".to_string());
         if !profiles.is_empty() {
             choices.push(">> Delete Profile".to_string());
@@ -63,7 +88,8 @@ pub fn run_interactive_mode(dry_run: bool) -> Result<(BackupConfig, String)> {
             continue;
         } else {
             // 用户选择了一个配置文件
-            let profile_name = choice;
+            // selection 索引对应 profiles 数组
+            let profile_name = &profiles[selection];
             let profile = app_config.profiles.get(profile_name).unwrap();
 
             // 获取源目录的绝对路径
@@ -184,6 +210,7 @@ fn delete_profile(config: &mut AppConfig) -> Result<()> {
 ///
 /// 使用路径的最后一部分作为项目名称。
 /// 例如：`C:\Users\Data` -> `Data`
+/// 对于驱动器根路径：`D:\` -> `D_Drive`
 ///
 /// # 参数
 /// * `path` - 源路径
@@ -191,8 +218,21 @@ fn delete_profile(config: &mut AppConfig) -> Result<()> {
 /// # 返回
 /// 项目名称字符串
 fn get_project_name(path: &std::path::Path) -> String {
-    path.file_name()
-        .and_then(|n| n.to_str())
-        .unwrap_or("Unknown")
-        .to_string()
+    if let Some(name) = path.file_name() {
+        name.to_string_lossy().to_string()
+    } else {
+        // 如果是驱动器根目录，生成特殊名称
+        let path_str = path.to_string_lossy();
+        if let Some(colon_idx) = path_str.find(':') {
+            if colon_idx > 0 {
+                let drive = &path_str[colon_idx - 1..colon_idx];
+                format!("{}_Drive", drive.to_uppercase())
+            } else {
+                "Unknown_Drive".to_string()
+            }
+        } else {
+            "Root_Backup".to_string()
+        }
+    }
 }
+
