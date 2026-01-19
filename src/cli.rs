@@ -70,6 +70,7 @@ pub fn run_interactive_mode(dry_run: bool) -> Result<(BackupConfig, String)> {
             .collect();
 
         choices.push(">> Create New Profile".to_string());
+        choices.push(">> Prune Backups".to_string());
         if !profiles.is_empty() {
             choices.push(">> Edit Profile".to_string());
             choices.push(">> Delete Profile".to_string());
@@ -91,6 +92,10 @@ pub fn run_interactive_mode(dry_run: bool) -> Result<(BackupConfig, String)> {
         } else if choice == ">> Create New Profile" {
             // 创建新配置文件
             create_new_profile(&mut app_config)?;
+            continue;
+        } else if choice == ">> Prune Backups" {
+            // 清理旧备份
+            prune_backups_interactive(&app_config)?;
             continue;
         } else if choice == ">> Edit Profile" {
             // 修改配置文件
@@ -270,6 +275,72 @@ fn edit_profile(config: &mut AppConfig) -> Result<()> {
     config.profiles.insert(profile_name, profile);
     config.save()?;
     println!("Profile updated successfully!");
+    Ok(())
+}
+
+/// 清理旧备份（交互式）
+fn prune_backups_interactive(config: &AppConfig) -> Result<()> {
+    let theme = ColorfulTheme::default();
+    let mut profiles: Vec<String> = config.profiles.keys().cloned().collect();
+    profiles.sort();
+
+    let mut choices: Vec<String> = Vec::new();
+    let mut targets: Vec<Option<PathBuf>> = Vec::new();
+
+    for name in &profiles {
+        if let Some(profile) = config.profiles.get(name) {
+            let project_name = get_project_name(&profile.source);
+            let dest = profile.destination.join(project_name);
+            choices.push(format!("{} ({})", name, dest.to_string_lossy()));
+            targets.push(Some(dest));
+        }
+    }
+
+    choices.push(">> Enter path manually".to_string());
+    targets.push(None);
+
+    if profiles.is_empty() {
+        choices.push(">> Back".to_string());
+        targets.push(None);
+    }
+
+    let selection = Select::with_theme(&theme)
+        .with_prompt("Select a backup target to prune")
+        .items(&choices)
+        .interact()?;
+
+    let selected = choices[selection].as_str();
+    if selected == ">> Back" {
+        return Ok(());
+    }
+
+    let destination = if selected == ">> Enter path manually" {
+        let dest: String = Input::with_theme(&theme)
+            .with_prompt("Backup Target Path")
+            .interact_text()?;
+        PathBuf::from(dest)
+    } else {
+        targets[selection]
+            .clone()
+            .unwrap_or_else(PathBuf::new)
+    };
+
+    if destination.as_os_str().is_empty() {
+        println!("{}", style("No destination selected.").yellow());
+        return Ok(());
+    }
+
+    let keep: usize = Input::with_theme(&theme)
+        .with_prompt("Keep latest N backups")
+        .default(5)
+        .interact_text()?;
+
+    let dry_run = Confirm::with_theme(&theme)
+        .with_prompt("Dry run (no delete)?")
+        .default(false)
+        .interact()?;
+
+    crate::prune::prune_backups(&destination, keep, dry_run)?;
     Ok(())
 }
 
