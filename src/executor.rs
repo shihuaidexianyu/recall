@@ -234,22 +234,24 @@ impl BackupExecutor {
         fs::rename(temp_path, final_path)
             .with_context(|| format!("Failed to rename {:?} to {:?}", temp_path, final_path))?;
 
-        // 删除旧的 current 链接
+        // 删除旧的 current 链接/目录（如果无法作为链接删除，则直接移除目录）
         if link_path.exists() || fs::symlink_metadata(link_path).is_ok() {
-            match fs::symlink_metadata(link_path) {
+            let removed = match fs::symlink_metadata(link_path) {
                 Ok(meta) => {
                     if meta.is_dir() {
-                        fs::remove_dir(link_path).ok();
+                        fs::remove_dir(link_path).ok().is_some()
                     } else {
-                        fs::remove_file(link_path).ok();
+                        fs::remove_file(link_path).ok().is_some()
                     }
                 }
-                Err(_) => {
-                    if link_path.is_dir() {
-                        fs::remove_dir(link_path).ok();
-                    } else {
-                        fs::remove_file(link_path).ok();
-                    }
+                Err(_) => false,
+            };
+
+            if !removed {
+                if link_path.is_dir() {
+                    fs::remove_dir_all(link_path).ok();
+                } else {
+                    fs::remove_file(link_path).ok();
                 }
             }
         }

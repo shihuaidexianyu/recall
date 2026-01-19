@@ -71,6 +71,7 @@ pub fn run_interactive_mode(dry_run: bool) -> Result<(BackupConfig, String)> {
 
         choices.push(">> Create New Profile".to_string());
         if !profiles.is_empty() {
+            choices.push(">> Edit Profile".to_string());
             choices.push(">> Delete Profile".to_string());
         }
         choices.push(">> Exit".to_string());
@@ -90,6 +91,10 @@ pub fn run_interactive_mode(dry_run: bool) -> Result<(BackupConfig, String)> {
         } else if choice == ">> Create New Profile" {
             // 创建新配置文件
             create_new_profile(&mut app_config)?;
+            continue;
+        } else if choice == ">> Edit Profile" {
+            // 修改配置文件
+            edit_profile(&mut app_config)?;
             continue;
         } else if choice == ">> Delete Profile" {
             // 删除配置文件
@@ -189,6 +194,82 @@ fn create_new_profile(config: &mut AppConfig) -> Result<()> {
     config.profiles.insert(name, profile);
     config.save()?;
     println!("Profile saved successfully!");
+    Ok(())
+}
+
+/// 修改配置文件（Profile）
+///
+/// 允许用户更新配置文件的各项参数。
+fn edit_profile(config: &mut AppConfig) -> Result<()> {
+    let theme = ColorfulTheme::default();
+
+    let mut profiles: Vec<String> = config.profiles.keys().cloned().collect();
+    if profiles.is_empty() {
+        println!("{}", style("No profiles available to edit.").yellow());
+        return Ok(());
+    }
+    profiles.sort();
+
+    let selection = Select::with_theme(&theme)
+        .with_prompt("Select a profile to EDIT")
+        .items(&profiles)
+        .interact()?;
+
+    let profile_name = profiles[selection].clone();
+    let mut profile = config.profiles.get(&profile_name).cloned().unwrap();
+
+    let source: String = Input::with_theme(&theme)
+        .with_prompt("Source Path")
+        .default(profile.source.to_string_lossy().to_string())
+        .interact_text()?;
+
+    let dest: String = Input::with_theme(&theme)
+        .with_prompt("Backup Root Path")
+        .default(profile.destination.to_string_lossy().to_string())
+        .interact_text()?;
+
+    let check_content = Confirm::with_theme(&theme)
+        .with_prompt("Enable Content Check (Slower but safer)?")
+        .default(profile.check_content)
+        .interact()?;
+
+    let vss = if cfg!(windows) {
+        Confirm::with_theme(&theme)
+            .with_prompt("Enable VSS snapshot (Windows only)?")
+            .default(profile.vss)
+            .interact()?
+    } else {
+        profile.vss
+    };
+
+    let current_exclude = profile.exclude.join(", ");
+    let exclude_input: String = Input::with_theme(&theme)
+        .with_prompt("Exclude patterns (comma-separated, optional)")
+        .default(current_exclude)
+        .interact_text()?;
+
+    let exclude: Vec<String> = exclude_input
+        .split(',')
+        .map(|s| s.trim())
+        .filter(|s| !s.is_empty())
+        .map(|s| s.to_string())
+        .collect();
+
+    let workers: usize = Input::with_theme(&theme)
+        .with_prompt("Worker threads")
+        .default(profile.workers)
+        .interact_text()?;
+
+    profile.source = PathBuf::from(source);
+    profile.destination = PathBuf::from(dest);
+    profile.check_content = check_content;
+    profile.vss = vss;
+    profile.exclude = exclude;
+    profile.workers = workers;
+
+    config.profiles.insert(profile_name, profile);
+    config.save()?;
+    println!("Profile updated successfully!");
     Ok(())
 }
 
